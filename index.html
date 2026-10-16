@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SnowFree — Board Gone Rogue</title><style>
+:root{font-family:'Courier New',monospace;color:#000;background:#c0c0c0;font-weight:bold}*{box-sizing:border-box}body{margin:0}header{display:flex;align-items:center;justify-content:space-between;background:#000080;color:white;padding:8px 14px;border:3px outset #ddd}header a{color:white;text-decoration:none;font-size:24px;letter-spacing:1px}header a small{display:inline;margin-left:18px;font-size:11px;letter-spacing:0}button{font:700 13px 'Courier New',monospace;background:#c0c0c0;border:3px outset #eee;color:#000;padding:8px 15px;cursor:pointer;border-radius:0}button:active{border-style:inset}button:focus-visible{outline:2px dashed #000;outline-offset:3px}main{padding:6px;max-width:1400px;margin:auto}.dashboard{display:flex;gap:30px;padding:8px 12px;border:2px inset #eee;flex-wrap:wrap}.dashboard>div{display:flex;align-items:center;gap:9px}.dashboard small{font-size:11px}.dashboard strong{font-size:18px}#wanted{color:#000080;letter-spacing:3px}.mountain{position:relative;overflow:hidden;background:white;height:calc(100dvh - 150px);min-height:400px;border:2px inset #ddd;margin-top:6px}canvas{display:block;width:100%;height:100%;touch-action:none;image-rendering:pixelated}.speedometer{position:absolute;top:0;right:0;width:226px;padding:6px 9px;background:#fff;border:2px solid #333;box-shadow:2px 2px #aaa;font-size:20px;pointer-events:none;font-variant-numeric:tabular-nums}.stat-row{display:flex;justify-content:space-between;gap:12px;line-height:1.15}.speed-track{height:4px;background:#ddd;margin:6px 0}#speedFill{height:100%;background:#000080;width:0}.speedometer b{display:block;font-size:12px;text-align:right;color:#000080}#overlay{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,92%);text-align:center;background:#c0c0c0;border:3px outset #eee;box-shadow:4px 4px #0005;padding:24px}.eyebrow{background:#000080;color:white;font-size:12px;padding:8px;letter-spacing:1px}h1{font-size:clamp(25px,4vw,36px);line-height:1.1;margin:22px 0}p{font-size:12px;line-height:1.7}#start{margin:12px}#overlay small{display:block;font-size:11px;line-height:1.7}.slope-label{position:absolute;bottom:10px;left:12px;font-size:10px;color:#777;pointer-events:none}.slope-label span{margin-left:16px}#message{position:absolute;top:125px;left:50%;transform:translateX(-50%);background:white;border:1px solid #000;padding:8px 12px;font-size:12px;max-width:90%;width:max-content;text-align:center;pointer-events:none;opacity:0}footer{display:flex;justify-content:space-between;font-size:10px;padding:8px 4px;gap:12px}[hidden]{display:none!important}@media(max-width:600px){header a small{display:none}.dashboard{gap:8px 16px;padding:6px}.dashboard>div:last-child{display:none}.dashboard small{font-size:9px}.dashboard strong{font-size:14px}.speedometer{width:185px;font-size:17px}.mountain{height:calc(100dvh - 160px)}footer{font-size:9px}footer span:last-child,.slope-label span{display:none}}
+/* Classic desktop chrome and crisp monospace statistics. */
+
+</style></head>
+<body>
+<header><a href="./">SNOW<span>FREE</span><small>BOARD GONE ROGUE</small></a><button id="pause">Pause · P</button></header>
+<main>
+  <section class="dashboard" aria-label="Game statistics">
+    <div><small>CHAOS SCORE</small><strong id="score">0</strong></div>
+    <div><small>SKI PATROL ALERT</small><strong id="wanted">☆☆☆☆☆</strong></div>
+    <div><small>BOARD CONDITION</small><strong id="health">100%</strong></div>
+    <div><small>PERSONAL BEST</small><strong id="best">0</strong></div>
+  </section>
+  <div class="mountain">
+    <canvas id="game" aria-label="SnowFree downhill snowboarding game"></canvas>
+    <div id="message" role="status"></div>
+    <div id="overlay">
+      <div class="eyebrow">NO RIDER. NO RULES.</div>
+      <h1>A loose board.<br>A mountain of trouble.</h1>
+      <p>Flatten skiers. Dodge rocks and rough snow. Lose the patrol.<br>And whatever you do, keep away from the yeti.</p>
+      <button id="start">LET IT SLIDE ↘</button>
+      <small>Acceleration is automatic. Gentle turns keep momentum.<br>← → / A D steer · ↓ / S brake · P pause<br>Space / left-click / tap: small hop.<br>Touch: drag to steer, hold near the bottom to brake.</small>
+    </div>
+    <div class="slope-label">BLACK PINE RESORT <span>↘ UNAUTHORIZED DESCENT</span></div>
+    <div class="speedometer" aria-label="Run statistics">
+      <div class="stat-row"><span>Time:</span><strong id="time">00:00.0</strong></div>
+      <div class="stat-row"><span>Dist:</span><strong id="distance">0 m</strong></div>
+      <div class="stat-row"><span>Speed:</span><strong><span id="speed">0</span> km/h</strong></div>
+      <div class="speed-track"><div id="speedFill"></div></div>
+      <b id="multiplier">1.0× POINTS</b>
+    </div>
+  </div>
+  <footer><span>100 / SKIER · 500 × STARS / ESCAPE · UP TO 2.5× WITH SPEED</span><span>SPACE / CLICK / TAP TO HOP</span></footer>
+</main>
+<script>
+/* Original canvas artwork; dependency-free browser prototype. */
+'use strict';
+const canvas = document.querySelector('#game');
+const ctx = canvas.getContext('2d');
+const ui = Object.fromEntries(['score', 'wanted', 'health', 'best', 'time', 'distance', 'speed', 'multiplier', 'speedFill', 'overlay', 'start', 'pause', 'message'].map(id => [id, document.getElementById(id)]));
+const keys = new Set();
+let width = 1000, height = 650, mode = 'ready', previous = 0, world = 0;
+let score = 0, health = 100, heat = 0, escapeStars = 0, escapeTime = 0;
+let elapsed = 0, patrolTimer = 0, yetiTimer = 24, invincible = 0;
+let terrainChunks = new Set(), terrainSeed = 1;
+let jumpLanes = new Map();
+let patrolContactCooldown = 0;
+let patrolPending = false;
+let airTime = 0, airDuration = 0;
+let jumpKind = 'ramp', hopCooldown = 0;
+let entities = [], particles = [], trails = [], toastTimer = 0, best = 0;
+let board = { x: 500, y: 200, vx: 0, speed: 240 }, touch = null;
+try { best = Number(localStorage.getItem('snowfree-best')) || 0; } catch {}
+ui.best.textContent = best.toLocaleString();
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const stars = () => Math.min(5, Math.ceil(heat / 3));
+const MAX_SPEED = 600;
+const CAMERA_ZOOM = 1.75;
+const CAMERA_BOARD_Y = .30;
+// Preserve the original movement; use the calibrated HUD scale for patrol capture.
+const PHYSICS_UNITS_PER_METER = 10;
+const WORLD_PIXELS_PER_METER = 10;
+const MOTION_SCALE = WORLD_PIXELS_PER_METER / PHYSICS_UNITS_PER_METER;
+const speedKmh = () => board.speed / PHYSICS_UNITS_PER_METER * 3.6;
+const displayedSpeedKmh = () => speedKmh() / 3;
+const speedMultiplier = () => Math.round(clamp(board.speed / 240, 1, 2.5) * 10) / 10;
+const jumpHeight = () => airTime > 0 ? Math.sin(Math.PI * (1 - airTime / airDuration)) * (jumpKind === 'hop' ? .35 : 1) : 0;
+function hop() {
+  if (mode !== 'playing' || airTime > 0 || hopCooldown > 0) return;
+  jumpKind = 'hop'; airDuration = .45; airTime = airDuration; hopCooldown = .75;
+  // Small hops carry the existing lateral momentum through the entire flight.
+  burst(board.x, board.y, '#ccc');
+}
+function resize() {
+  const oldBoardY = board.y;
+  const viewport = canvas.getBoundingClientRect();
+  width = viewport.width / CAMERA_ZOOM; height = viewport.height / CAMERA_ZOOM;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(viewport.width * dpr); canvas.height = Math.round(viewport.height * dpr);
+  ctx.setTransform(dpr * CAMERA_ZOOM, 0, 0, dpr * CAMERA_ZOOM, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  board.y = height * CAMERA_BOARD_Y;
+  // Resizing moves the camera, never the board's position on the mountain.
+  for (const item of [...entities, ...trails, ...particles]) item.y += board.y - oldBoardY;
+  if (mode === 'playing' || mode === 'paused') ensureTerrain();
+}
+new ResizeObserver(resize).observe(canvas);
+function toast(text) { ui.message.textContent = text; toastTimer = 2.6; }
+function updateHUD() {
+  const seconds = Math.floor(elapsed);
+  ui.time.textContent = `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}.${Math.floor(elapsed % 1 * 10)}`;
+  ui.distance.textContent = `${Math.floor(world / WORLD_PIXELS_PER_METER)} m`;
+  ui.speed.textContent = Math.round(displayedSpeedKmh());
+  ui.multiplier.textContent = `${speedMultiplier().toFixed(1)}× POINTS`;
+  ui.speedFill.style.width = `${clamp(board.speed / MAX_SPEED, 0, 1) * 100}%`;
+  ui.score.textContent = Math.floor(score).toLocaleString(); ui.health.textContent = `${Math.max(0, Math.ceil(health))}%`;
+  const n = stars(); ui.wanted.textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
+  ui.wanted.setAttribute('aria-label', `Wanted level ${n} of 5`);
+}
+function start() {
+  score = 0; health = 100; heat = 0; escapeStars = 0; escapeTime = 0;
+  elapsed = 0; world = 0; patrolTimer = 0; yetiTimer = 24; invincible = 0;
+  terrainChunks = new Set(); terrainSeed = Math.floor(Math.random() * 0x7fffffff);
+  jumpLanes = new Map();
+  patrolContactCooldown = 0;
+  patrolPending = false;
+  airTime = 0; airDuration = 0;
+  jumpKind = 'ramp'; hopCooldown = 0;
+  entities = []; particles = []; trails = []; keys.clear(); touch = null;
+  board = { x: 0, y: height * CAMERA_BOARD_Y, vx: 0, speed: 240 };
+  ensureTerrain();
+  mode = 'playing'; ui.overlay.hidden = true; ui.pause.textContent = 'Pause · P';
+  toast('RUNAWAY BOARD! Hit skiers to start trouble.'); updateHUD();
+}
+function togglePause() {
+  if (mode !== 'playing' && mode !== 'paused') return;
+  mode = mode === 'playing' ? 'paused' : 'playing';
+  ui.pause.textContent = mode === 'paused' ? 'Resume · P' : 'Pause · P';
+  toast(mode === 'paused' ? 'PAUSED — press P or Resume' : 'BACK ON THE SLOPE');
+}
+function end(reason = 'crash') {
+  mode = 'over'; best = Math.max(best, Math.floor(score));
+  try { localStorage.setItem('snowfree-best', String(best)); } catch {}
+  ui.best.textContent = best.toLocaleString(); ui.overlay.hidden = false;
+  ui.overlay.querySelector('.eyebrow').textContent = 'END OF THE LINE';
+  ui.overlay.querySelector('h1').textContent = reason === 'patrol' ? 'SKI PATROL GOT YOU' : 'That escalated downhill.';
+  ui.overlay.querySelector('p').textContent = `${Math.floor(score).toLocaleString()} points · ${Math.floor(world / WORLD_PIXELS_PER_METER)} meters · personal best ${best.toLocaleString()}`;
+  ui.start.textContent = 'ONE MORE RUN ↘';
+}
+ui.start.addEventListener('click', start); ui.pause.addEventListener('click', togglePause);
+window.addEventListener('keydown', e => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+  keys.add(e.key.toLowerCase()); if (e.key.toLowerCase() === 'p' && !e.repeat) togglePause();
+  if (e.key === ' ' && !e.repeat) hop();
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => { keys.clear(); touch = null; if (mode === 'playing') togglePause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'playing') togglePause(); });
+function pointer(e) { const r = canvas.getBoundingClientRect(); touch = { x: (e.clientX - r.left) / CAMERA_ZOOM, y: (e.clientY - r.top) / CAMERA_ZOOM }; }
+canvas.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !e.isPrimary) return;
+  canvas.setPointerCapture(e.pointerId); pointer(e); hop();
+});
+canvas.addEventListener('pointermove', e => { if (touch) pointer(e); });
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(event, () => { touch = null; });
+// Bump centers and half-widths: single moguls, pairs, and irregular snow fields.
+const SNOW_SHAPES = [
+  [[0, 0, 10]],
+  [[-12, -5, 10], [12, 7, 12]],
+  [[-24, -16, 12], [0, -9, 13], [27, -15, 9], [-17, 5, 11], [12, 10, 14], [-28, 20, 10], [0, 26, 12], [30, 22, 10]],
+  [[-32, 0, 10], [-10, -7, 12], [14, 3, 11], [35, -4, 9]],
+  [[-8, -26, 10], [8, -9, 12], [-9, 10, 11], [6, 27, 10]]
+];
+const TREE_SHAPES = [
+  { rows: 18, halfWidth: 7 }, // Small, squat pine.
+  { rows: 29, halfWidth: 9 }, // Medium pine.
+  { rows: 42, halfWidth: 10 }, // Tall, narrow fir.
+  { rows: 25, halfWidth: 12 } // Broad, spreading pine.
+];
+function spawn(type, x = board.x + rand(-width / 2, width / 2), y = height + 40) {
+  const e = { type, x, y, vx: rand(-65, 65), speed: rand(50, 110), phase: rand(0, 6.28), hit: false, life: 0 };
+  if (type === 'snow') e.snowShape = Math.floor(Math.random() * SNOW_SHAPES.length);
+  if (type === 'tree') e.treeShape = Math.floor(Math.random() * TREE_SHAPES.length);
+  if (type === 'stump') e.stumpScale = Math.random() < .5 ? .75 : 1.1;
+  entities.push(e); return e;
+}
+function burst(x, y, color) {
+  for (let i = 0; i < 12; i++) particles.push({ x, y, vx: rand(-95, 95), vy: rand(-90, 90), life: .7, color });
+}
+function ensureTerrain() {
+  const size = 256, margin = 256;
+  const left = Math.floor((board.x - width / 2 - margin) / size);
+  const right = Math.floor((board.x + width / 2 + margin) / size);
+  const top = Math.floor((world - board.y - margin) / size);
+  const bottom = Math.floor((world + height - board.y + margin) / size);
+  const active = new Set();
+  for (let cy = top; cy <= bottom; cy++) for (let cx = left; cx <= right; cx++) {
+    const key = `${cx},${cy}`; active.add(key);
+    if (terrainChunks.has(key)) continue;
+    // Coordinate-seeded terrain stays consistent when a nearby area is revisited.
+    let seed = (Math.imul(cx, 73856093) ^ Math.imul(cy, 19349663) ^ terrainSeed) >>> 0;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let i = 0; i < 3; i++) {
+      const x = (cx + random()) * size, y = (cy + random()) * size, r = random();
+      if (Math.hypot(x, y) < 110) continue; // Clear starting area.
+      const e = spawn(r < .40 ? 'skier' : r < .56 ? 'rock' : r < .72 ? 'snow' : r < .84 ? 'tree' : r < .92 ? 'stump' : r < .985 ? 'dryTree' : 'jump', x, board.y + y - world);
+      e.chunk = key;
+      if (e.type === 'snow') e.snowShape = Math.floor(random() * SNOW_SHAPES.length);
+      if (e.type === 'tree') e.treeShape = Math.floor(random() * TREE_SHAPES.length);
+      if (e.type === 'stump') e.stumpScale = random() < .5 ? .75 : 1.1;
+      if (e.type === 'jump') {
+        // Maximum flight: 600 units/s × 1.9 seconds, plus landing room.
+        jumpLanes.set(`${key}:${i}`, { x, start: y - 28, end: y + 1350 });
+      }
+    }
+  }
+  terrainChunks = active;
+  // Keep reservations after the ramp scrolls away, through the entire landing.
+  for (const [key, lane] of jumpLanes) {
+    if (lane.end < world - board.y - margin || Math.abs(lane.x - board.x) > width / 2 + 1600) jumpLanes.delete(key);
+  }
+  const groundObstacles = new Set(['rock', 'tree', 'stump', 'dryTree', 'snow']);
+  entities = entities.filter(e => {
+    if (groundObstacles.has(e.type)) {
+      const worldY = world + e.y - board.y;
+      // Extra padding accounts for wide trees and irregular snow clusters.
+      for (const lane of jumpLanes.values()) {
+        if (Math.abs(e.x - lane.x) < 80 && worldY > lane.start && worldY < lane.end) return false;
+      }
+    }
+    // Skiers leave their birth chunks as they move. Cull by their current position,
+    // including fallen skiers, so unloading an old chunk cannot erase visible ones.
+    if (e.type === 'skier') return Math.abs(e.x - board.x) < width / 2 + margin + size && e.y > -margin - size && e.y < height + margin + size;
+    return !e.chunk || active.has(e.chunk);
+  });
+}
+function damage(amount, text, speedRetention = .55) {
+  if (invincible > 0) return;
+  health -= amount; invincible = 1.3; board.speed *= speedRetention; burst(board.x, board.y, '#e6653d'); toast(text);
+}
+function update(dt) {
+  const movementDt = dt * MOTION_SCALE;
+  elapsed += dt; invincible = Math.max(0, invincible - dt); toastTimer = Math.max(0, toastTimer - dt);
+  patrolContactCooldown = Math.max(0, patrolContactCooldown - dt);
+  hopCooldown = Math.max(0, hopCooldown - dt);
+  const wasAirborne = airTime > 0;
+  airTime = Math.max(0, airTime - dt);
+  if (wasAirborne && airTime === 0) burst(board.x, board.y, '#ccc');
+  let steering = Number(keys.has('arrowright') || keys.has('d')) - Number(keys.has('arrowleft') || keys.has('a'));
+  if (touch) steering = clamp((touch.x - width / 2) / 70, -1, 1);
+  if (airTime === 0) board.vx += (steering * 310 - board.vx) * Math.min(1, dt * 8);
+  else if (jumpKind === 'ramp') board.vx = 0;
+  const brake = touch ? clamp((touch.y / height - .65) / .35, 0, 1) : Number(keys.has('arrowdown') || keys.has('s'));
+  const turn = Math.abs(board.vx) / 310;
+  // Gravity builds momentum down the fall line; carving scrubs that momentum.
+  const straightBonus = 35 * (1 - clamp(turn, 0, 1)) ** 2;
+  const acceleration = 100 + straightBonus - turn * 45 - brake * 240 - .00018 * board.speed ** 2;
+  board.speed = clamp(board.speed + acceleration * dt, 50, MAX_SPEED);
+  board.x += board.vx * movementDt; world += board.speed * movementDt;
+  if (airTime === 0) trails.push({ x: board.x, y: board.y + 16 });
+  for (const t of trails) t.y -= board.speed * movementDt;
+  trails = trails.filter(t => t.y > -20).slice(-100);
+  const wanted = stars(); patrolTimer -= dt;
+  const activePatrols = entities.filter(e => e.type === 'patrol' && !e.hit);
+  const patrolHasContact = activePatrols.some(e => Math.hypot(e.x - board.x, e.y - board.y) < 270);
+  // Reinforcements require an active sighting. Breaking contact must give the
+  // player a genuine escape window instead of spawning a new pursuer nearby.
+  const canReinforce = patrolPending || patrolHasContact;
+  if (wanted > 0 && canReinforce && patrolTimer <= 0 && activePatrols.length < wanted + 1) {
+    // Enter from a visible flank just downhill. Slower patrol spawned above the
+    // viewport can fall behind forever without ever appearing on screen.
+    const flank = Math.random() < .5 ? -1 : 1;
+    const entryX = board.x + flank * Math.max(35, width / 2 - 22);
+    const entryY = Math.min(height - 24, board.y + rand(60, 110));
+    spawn('patrol', entryX, entryY);
+    patrolPending = false;
+    patrolTimer = Math.max(1.8, 4.8 - wanted * .55); toast('SKI PATROL IN PURSUIT — keep your speed!');
+  }
+  yetiTimer -= dt;
+  if (yetiTimer <= 0) { spawn('yeti', board.x + rand(-width / 2, width / 2), -70); yetiTimer = rand(28, 40); toast('YETI SPOTTED. You are not alone.'); }
+  let closePatrol = false;
+  for (const e of entities) {
+    e.life += dt;
+    if (e.type === 'skier') {
+      const wasFlying = e.airTime > 0;
+      e.airTime = Math.max(0, (e.airTime || 0) - dt);
+      if (wasFlying && e.airTime === 0) burst(e.x, e.y, '#ccc');
+    }
+    if ((e.type === 'patrol' || e.type === 'yeti') && !e.hit) {
+      const isYeti = e.type === 'yeti';
+      if (isYeti) {
+        e.x += Math.sign(board.x - e.x) * Math.min(Math.abs(board.x - e.x) * 2, 100) * movementDt;
+        e.y += (310 - board.speed) * movementDt;
+      } else {
+        // Lead the board's turns and regulate downhill speed to stay in pursuit
+        // rather than simply overtaking and disappearing down the mountain.
+        const targetX = board.x + board.vx * .35;
+        e.x += clamp((targetX - e.x) * 3.5, -(145 + wanted * 25), 145 + wanted * 25) * movementDt;
+        const pursuitSpeed = clamp(board.speed + (board.y - e.y) * 1.8, 100, 340 + wanted * 28);
+        e.y += (pursuitSpeed - board.speed) * movementDt;
+      }
+      if (!isYeti && Math.hypot(e.x - board.x, e.y - board.y) < 270) closePatrol = true;
+      if (e.life > (isYeti ? 18 : 24)) e.hit = true;
+    } else {
+      e.y -= (board.speed - (e.type === 'skier' && !e.hit ? e.speed : 0)) * movementDt;
+      if (e.type === 'skier' && !e.hit && e.airTime === 0) {
+        const oldX = e.x;
+        e.x += (e.vx + Math.sin(elapsed * 1.7 + e.phase) * 45) * movementDt;
+        if (dt > 0) e.moveX = (e.x - oldX) / movementDt;
+        if (Math.abs(e.moveX) > 2) e.facing = Math.sign(e.moveX);
+      }
+      if (e.type === 'skier' && e.airTime > 0) e.moveX = 0;
+    }
+  }
+  // A ramp can launch any number of skiers, independently of the player's jump.
+  const ramps = entities.filter(e => e.type === 'jump');
+  for (const e of entities) {
+    if (e.type !== 'skier' || e.hit || e.airTime > 0) continue;
+    const ramp = ramps.find(r => r !== e.lastRamp && Math.abs(r.x - e.x) < 27 && Math.abs(r.y - e.y) < 18);
+    if (ramp) {
+      e.lastRamp = ramp; e.airDuration = 1.3 + e.speed / 110 * .5; e.airTime = e.airDuration;
+      e.moveX = 0;
+      burst(e.x, e.y, '#ccc');
+    }
+  }
+  // Resolve takeoff before ground collisions, independent of entity ordering.
+  if (airTime === 0) {
+    const ramp = entities.find(e => e.type === 'jump' && !e.usedJump && Math.abs(e.x - board.x) < 27 && Math.abs(e.y - board.y) < 18);
+    if (ramp) {
+      ramp.usedJump = true;
+      jumpKind = 'ramp';
+      board.speed = Math.min(MAX_SPEED, board.speed * 1.6 + 60);
+      airDuration = 1.1 + board.speed / MAX_SPEED * .8; airTime = airDuration;
+      board.vx = 0;
+      burst(board.x, board.y, '#ccc'); toast('AIRBORNE! SPEED BOOST!');
+    }
+  }
+  for (const e of entities) {
+    if (e.hit || e.type === 'jump') continue;
+    const boardFlying = airTime > 0;
+    const lowHop = boardFlying && jumpKind === 'hop';
+    const skierFlying = e.type === 'skier' && e.airTime > 0;
+    // Small hops clear only low terrain; rainbow jumps reach the skier air layer.
+    if (e.type === 'skier') {
+      if ((boardFlying && !lowHop) !== skierFlying) continue;
+    } else if (boardFlying) {
+      if (!lowHop || ['rock', 'stump', 'snow'].includes(e.type)) continue;
+    }
+    const radius = e.type === 'yeti' ? 29 : e.type === 'tree' ? TREE_SHAPES[e.treeShape].halfWidth * 2 + 5 : e.type === 'stump' ? 13 * e.stumpScale + 7 : 21;
+    const touching = e.type === 'snow'
+      ? SNOW_SHAPES[e.snowShape].some(([dx, dy, halfWidth]) => Math.abs(e.x + dx - board.x) < halfWidth + 7 && Math.abs(e.y + dy - board.y) < 18)
+      : Math.abs(e.x - board.x) < radius && Math.abs(e.y - board.y) < radius + 8;
+    if (touching) {
+      if (e.type === 'skier') {
+        const multiplier = speedMultiplier(), points = Math.round(100 * multiplier);
+        if (heat === 0) { patrolPending = true; patrolTimer = 4; }
+        e.hit = true; e.airTime = 0; score += points; heat = Math.min(15, heat + 1); escapeStars = Math.max(escapeStars, stars()); escapeTime = 0;
+        burst(e.x, e.y, '#e9b645'); toast(`+${points} — ${boardFlying && !lowHop ? 'MID-AIR HIT!' : 'SKIER DOWN!'} ${multiplier.toFixed(1)}× SPEED` + (heat === 1 ? ' Patrol alerted.' : ''));
+      } else if (e.type === 'snow') {
+        // Small initial speed loss, then gentle friction over the visible bumps.
+        if (!e.entered) { board.speed *= .8; e.entered = true; toast('ROUGH SNOW!'); }
+        board.speed = Math.max(50, board.speed - 210 * dt);
+      } else if (e.type === 'patrol') {
+        if (patrolContactCooldown === 0) {
+          board.speed *= .35; patrolContactCooldown = .9;
+          burst(board.x, board.y, '#aaa'); toast('SKI PATROL! Slowing you down!');
+        }
+        if (displayedSpeedKmh() < 10) {
+          updateHUD(); toast('SKI PATROL GOT YOU'); end('patrol'); return;
+        }
+      } else {
+        if (e.type === 'dryTree' && !e.burning) {
+          e.burning = true; e.ignitedAt = elapsed;
+          burst(e.x, e.y, '#ff9100');
+        }
+        damage(e.type === 'yeti' ? 40 : 15, e.type === 'yeti' ? 'YETI ATTACK! −40 condition' : e.type === 'dryTree' ? 'TREE IGNITED! −15 condition' : 'OBSTACLE! −15 condition', e.type === 'rock' ? .5 : .55);
+      }
+    }
+  }
+  if (wanted > 0) {
+    escapeTime = closePatrol || patrolPending ? 0 : escapeTime + dt;
+    if (escapeTime >= 8) {
+      const multiplier = speedMultiplier(), bonus = Math.round(500 * escapeStars * multiplier);
+      score += bonus; heat = 0; escapeTime = 0; escapeStars = 0;
+      for (const e of entities) if (e.type === 'patrol') e.hit = true;
+      toast(`PATROL EVADED! +${bonus} points · ${multiplier.toFixed(1)}× SPEED`);
+    }
+  }
+  entities = entities.filter(e => e.chunk || (e.y > -450 && e.y < height + 450 && Math.abs(e.x - board.x) < width + 500 && e.life < 40));
+  ensureTerrain();
+  for (const p of particles) { p.life -= dt; p.x += p.vx * movementDt; p.y += (p.vy - board.speed) * movementDt; }
+  particles = particles.filter(p => p.life > 0); updateHUD(); if (health <= 0) end();
+}
+// Hand-authored sprites on a two-pixel grid, with no smoothing or external assets.
+const palette = { K:'#111', G:'#008000', L:'#00bd00', Y:'#e6df00', W:'#fff', S:'#aaa', D:'#666', B:'#0000df', R:'#ed1515', P:'#a000df', F:'#ffc58a', C:'#00cddd', H:'#890b13', V:'#6200a0', O:'#817500' };
+const sprites = {
+  skierJump:[
+    '..........RRR..........',
+    '.........HRRRH.........',
+    '.........OOOOO.........',
+    '.........FKKKF.........',
+    '....F.....FFF.....F....',
+    '...K.PP...V...PP.K.....',
+    '...K..PP.VPV.PP..K.....',
+    '..K....PPPPPPP....K....',
+    '..K.....PBBBP.....K....',
+    '.K......BBBBB......K...',
+    '.K......BBBBB......K...',
+    '.K......BBBBB......K...',
+    '........BBBBB..........',
+    '.......BBB.BBB.........',
+    '......BBB...BBB........',
+    '.....BBB.....BBB.......',
+    '....GGG.......GGG......',
+    '...KYG.........GYK.....',
+    '..KYG...........GYK....',
+    '.KYG.............GYK...',
+    '.KK...............KK...'
+  ],
+  dryTree:[
+    '.........O.........',
+    '........OK.........',
+    '........OY.........',
+    '......O.OO.........',
+    '......YOOK.........',
+    '.......OOK..O......',
+    '....O...OK.OY......',
+    '....YO..OKOO.......',
+    '.....OO.OKO........',
+    '......OOOK.........',
+    '..O....OOK....O....',
+    '..YO....OK...OY....',
+    '...OO...OK..OO.....',
+    '....OO..OK.OO......',
+    '.....OOOOKOO.......',
+    '......OOOKO........',
+    '...O....OK....O....',
+    '...YO...OK...OY....',
+    '....OO..OK..OO.....',
+    '.....OOOOKOO.......',
+    '......OOOKO........',
+    '.......OOK.........',
+    '.......OOK.........',
+    '......OOOOO........'
+  ],
+  stump:[
+    '....KKKKK....',
+    '....KOYOK....',
+    '....KOGOK....',
+    '...KGYOGK....',
+    '...KOGYGOK...',
+    '..KGYOGYGK...',
+    '..KOGYGOGK...',
+    '.KGYOGYOGYK..',
+    '.KOGYOGYOGK..',
+    'KKKKKKKKKKKK.'
+  ],
+  board:['..KKK..','.KYYYK.','.KYYYK.','.KYYYK.','.KRRRK.','.KRRRK.','.KKWKK.','.KKWKK.','.KRRRK.','.KRRRK.','.KRRRK.','.KKWKK.','.KKWKK.','.KRRRK.','.KYYYK.','.KYYYK.','.KYYYK.','..KKK..'],
+  skierStraight:[
+    '........R........',
+    '.......RRR.......',
+    '.......RRR.......',
+    '......HRRRH......',
+    '......OOOOO......',
+    '......FKKKF......',
+    '.......FFF.......',
+    '.....VPPPPPV.....',
+    '....VPPPBPPPV....',
+    '...FVPBBYBBPVF...',
+    '...K.VBBYBBV.K...',
+    '...K..BBBBB..K...',
+    '...K..BBBBB..K...',
+    '...K..GGGGG..K...',
+    '...K..GL.LG..K...',
+    '......GL.LG......',
+    '......GL.LG......',
+    '......KK.KK......',
+    '......KY.YK......',
+    '......KY.YK......',
+    '......KY.YK......',
+    '......KK.KK......'
+  ],
+  // Side and diagonal sprites face left; the renderer mirrors them to face right.
+  skierSide:[
+    '........HHHH.......',
+    '.......HRRRRH......',
+    '.......HRR..RH.....',
+    '.......OO....HK....',
+    '......FFK..........',
+    '......FFF..........',
+    '.......FV..........',
+    '.......PPV.........',
+    '......PPPBV........',
+    '.....FPPBBV........',
+    '.....K.PBBV........',
+    '.....K.BBBV........',
+    '.....K.GGG.........',
+    '.....K.GLG.........',
+    '.....K.GLG.........',
+    '.....K.GLG.........',
+    '.....K.GLG.........',
+    '.....KKKKG.........',
+    '..K..KKKK..........',
+    '..KYYYYYYYYYYYYYK..',
+    '...KKKKKKKKKKKKKK..',
+    '....YYYYYYYYYYYYK..',
+    '....KKKKKKKKKKKKK..'
+  ],
+  skierDiagonal:[
+    '.........HHHHH.....',
+    '........HRRRRRH....',
+    '.......HRRRH..HK...',
+    '.......OOOO........',
+    '.......FKKF........',
+    '.......FFF.........',
+    '........FV.........',
+    '......VPPPV........',
+    '.....VPPPPPV.......',
+    '....FVPBPPPVF......',
+    '...FK.VBBPV.FK.....',
+    '...K..VBBV...K.....',
+    '...K...GGG...K.....',
+    '...K..GLLGG..K.....',
+    '...K..GLLG.GGK.....',
+    '...K..GLLG.GLG.....',
+    '...K..GLLG.GLG.....',
+    '...K..GKG..GKG.....',
+    '...K.KYK...KYK.....',
+    '....KYK...KYK......',
+    '...KYK...KYK.......',
+    '..KYK...KYK........',
+    '..KK....KK.........'
+  ],
+  fallen:[
+    '.....HHHHH................',
+    '....HRRRRH................',
+    '...HRRRH..................',
+    '..HHHHH...................',
+    '......................KK..',
+    '.......KK............KYK..',
+    '.......KYK..........KYK...',
+    '........KYK........KYK....',
+    '........KYK.......KYK.....',
+    '.........KYK.....KYK......',
+    '.........KYK.....KK.......',
+    '..........KK..............',
+    '.K........................',
+    '.KKKKKKK..................',
+    '.K.................K......',
+    '....................KK....',
+    '......................KK..',
+    '.......................KKK'
+  ],
+  patrol:[
+    '.......RRR.......',
+    '......HRRRH......',
+    '......HRRRH......',
+    '......WKKKW......',
+    '......FKKKF......',
+    '.......FFF.......',
+    '.....RRRRRRR.....',
+    '....RRRRWRRRR....',
+    '...RRRWWWWWRRR...',
+    '..FRRRRRWRRRRRF..',
+    '..K..RRRWRRR..K..',
+    '..K...RRRRR...K..',
+    '..K...KKKKK...K..',
+    '..K...KB.BK...K..',
+    '..K...KB.BK...K..',
+    '..K...KB.BK...K..',
+    '......KB.BK......',
+    '......KB.BK......',
+    '.....RRK.KRR.....',
+    '.....KKK.KKK.....',
+    '......KR.RK......',
+    '......KR.RK......',
+    '......KK.KK......'
+  ],
+  rock:['.....KKKK....','...KKSSSSK...','..KSSWSDSSK..','.KSWSSSSDSK..','.KSSDSWSSSSK.','KSSSSSDSSDSK.','KSDSSSSSSSSSK','KKKKKKKKKKKKK'],
+  yeti:['....KK...KK....','...KWWKKKWWK...','...KWWWWWWWK...','....KWRWRWK....','....KWKKKWK....','...KWWWWWWWK...','..KWWWWWWWWWK..','.KWWKWWWWWKWWK.','KWWKWWWWWWWKWWK','KWKKWWWWWWWKKWK','KK.KWWWWWWWK.KK','...KWWWKWWWK...','...KWWK.KWWK...','..KWWWK.KWWWK..','..KKKK...KKKK..']
+};
+function pixel(x, y, color, w = 2, h = 2) { ctx.fillStyle = color; ctx.fillRect(Math.round(x / 2) * 2, Math.round(y / 2) * 2, w, h); }
+function sprite(name, x, y, lean = 0, fallen = false, mirrored = false) {
+  const rows = sprites[name];
+  rows.forEach((row, j) => [...row].forEach((c, i) => {
+    if (!palette[c]) return;
+    const px = (i - row.length / 2) * 2 + Math.round((j - rows.length / 2) * lean) * 2;
+    const py = (j - rows.length / 2) * 2;
+    const dx = fallen ? py : px;
+    pixel(x + (mirrored ? -dx - 2 : dx), y + (fallen ? -px : py), palette[c]);
+  }));
+}
+function skierPose(e) {
+  // Use world-space movement, not the camera's downhill scrolling speed.
+  const lateral = e.moveX ?? e.vx;
+  const angle = Math.atan2(Math.abs(lateral), e.speed);
+  return { name: angle < .25 ? 'skierStraight' : angle < .65 ? 'skierDiagonal' : 'skierSide', mirrored: (e.facing ?? Math.sign(lateral)) > 0 };
+}
+function drawTreeFire(e) {
+  const age = elapsed - e.ignitedAt;
+  const frame = Math.floor(age * 12);
+  const growth = Math.min(1, .25 + age * 2);
+  // Flickering pixel tongues grow up through the branches after ignition.
+  for (let column = -3; column <= 3; column++) {
+    const flicker = ((frame * 7 + (column + 3) * 13) % 11);
+    const flameHeight = (42 - Math.abs(column) * 7 + flicker) * growth;
+    for (let row = 0; row < flameHeight; row += 3) {
+      const sway = Math.round(Math.sin(row * .19 + frame + column) * 2) * 2;
+      const color = row > flameHeight - 9 ? '#ed2700' : (row + column + frame) % 4 === 0 ? '#fff46b' : '#ffb000';
+      pixel(e.x + column * 4 + sway, e.y + 7 - row, color, 3, 4);
+    }
+  }
+  // Rising embers and smoke share the simulation clock, so pause freezes them.
+  for (let i = 0; i < 5; i++) {
+    const rise = (age * 24 + i * 13) % 65;
+    const drift = Math.sin(age * 2 + i) * 9 + rise * .12;
+    ctx.globalAlpha = (1 - rise / 65) * .5;
+    pixel(e.x + drift, e.y - 26 - rise, i % 2 ? '#888' : '#f47400', i % 2 ? 6 : 2, i % 2 ? 6 : 2);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawEntity(e) {
+  const { x, y, type } = e;
+  if (type === 'skier' && e.hit) {
+    sprite('fallen', x, y, 0, false, e.facing > 0);
+    // Little snow puffs leave the skier buried between the scattered equipment.
+    for (let i = 0; i < 16; i++) {
+      const px = x + ((i * 17) % 35) - 17, py = y - 32 + ((i * 11) % 30);
+      pixel(px, py, i % 3 ? '#aaa' : '#555');
+    }
+    ctx.fillStyle = '#222'; ctx.font = 'bold 12px monospace'; ctx.fillText('OUCH!', Math.round(x - 15), Math.round(y - 35));
+    return;
+  }
+  if (type === 'dryTree') {
+    sprite('dryTree', x, y - 16);
+    if (e.burning) drawTreeFire(e);
+  } else if (type === 'jump') {
+    ['#a52a00', '#ff9d00', '#ffff00', '#008000', '#0000dc', '#b000df'].forEach((color, i) => pixel(x - 22, y - 6 + i * 2, color, 44, 2));
+  } else if (type === 'stump') {
+    ctx.save(); ctx.translate(x, y); ctx.scale(e.stumpScale, e.stumpScale);
+    sprite('stump', 0, 0); ctx.restore();
+  } else if (type === 'tree') {
+    const shape = TREE_SHAPES[e.treeShape];
+    const trunkWidth = shape.rows > 30 ? 8 : 6;
+    pixel(x - trunkWidth / 2, y + 8, '#b6a600', trunkWidth, 12);
+    for (let row = 0; row < shape.rows; row++) {
+      const half = Math.max(0, Math.floor(shape.halfWidth * (row / (shape.rows - 1)) ** .85) - (row % 5 === 0 ? 1 : 0));
+      for (let col = -half; col <= half; col++) {
+        const fleck = (row * 13 + col * 7 + 83) % 17;
+        pixel(x + col * 2, y + 12 - shape.rows * 2 + row * 2, fleck < 2 ? '#d8dc00' : fleck < 8 ? '#00b900' : '#008000');
+      }
+    }
+  } else if (type === 'snow') {
+    for (const [dx, dy, halfWidth] of SNOW_SHAPES[e.snowShape]) {
+      for (let px = -halfWidth; px <= halfWidth; px += 2) {
+        const arcY = 5 * (px / halfWidth) ** 2;
+        pixel(x + dx + px, y + dy + arcY, '#ccc');
+      }
+    }
+  } else if (type === 'skier') {
+    if (e.airTime > 0) {
+      const altitude = Math.sin(Math.PI * (1 - e.airTime / e.airDuration));
+      ctx.globalAlpha = .3 - altitude * .12;
+      pixel(x - 12, y - 4, '#555', 24, 8);
+      pixel(x - 8, y - 6, '#555', 16, 12);
+      ctx.globalAlpha = 1;
+      ctx.save(); ctx.translate(x, y - altitude * 32);
+      const scale = 1 + altitude * .65; ctx.scale(scale, scale);
+      sprite('skierJump', 0, 0); ctx.restore();
+    } else {
+      const pose = skierPose(e);
+      sprite(pose.name, x, y, 0, false, pose.mirrored);
+    }
+  } else sprite(type, x, y, 0, e.hit);
+}
+function draw() {
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
+  ctx.save(); ctx.translate(width / 2 - board.x, 0);
+  for (let i = 0; i < trails.length; i += 3) pixel(trails[i].x, trails[i].y, '#eee');
+  [...entities].sort((a, b) => a.y - b.y).forEach(drawEntity);
+  const altitude = jumpHeight();
+  if (airTime > 0) {
+    ctx.globalAlpha = .3 - altitude * .12;
+    pixel(board.x - 7, board.y - 12, '#555', 14, 24);
+    pixel(board.x - 5, board.y - 16, '#555', 10, 32);
+    ctx.globalAlpha = 1;
+  }
+  ctx.save(); ctx.translate(board.x, board.y - altitude * 32);
+  const boardScale = 1 + altitude * .65; ctx.scale(boardScale, boardScale);
+  if (invincible > 0 && Math.floor(elapsed * 12) % 2) ctx.globalAlpha = .35;
+  sprite('board', 0, 0, board.vx / 620); ctx.restore();
+  for (const p of particles) { ctx.globalAlpha = p.life / .7; ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, 4, 4); } ctx.globalAlpha = 1;
+  ctx.restore();
+  if (heat > 0) {
+    ctx.fillStyle = '#000'; ctx.font = 'bold 11px monospace';
+    ctx.fillText(patrolPending ? `PATROL IN ${Math.max(1, Math.ceil(patrolTimer))}s` : escapeTime > .5 ? 'LOSING PATROL...' : 'IN PURSUIT', 12, 22);
+    ctx.fillStyle = '#ccc'; ctx.fillRect(12, 30, 120, 4); ctx.fillStyle = '#000080'; ctx.fillRect(12, 30, escapeTime / 8 * 120, 4);
+  }
+  ui.message.style.opacity = toastTimer > 0 || mode === 'paused' ? '1' : '0';
+}
+function frame(now) {
+  const dt = Math.min((now - previous) / 1000 || 0, .04); previous = now;
+  if (mode === 'playing') update(dt); draw(); requestAnimationFrame(frame);
+}
+resize(); updateHUD(); requestAnimationFrame(frame);
+
+</script>
+</body></html>
